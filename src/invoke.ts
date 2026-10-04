@@ -28,6 +28,45 @@ export type StructuredInvocationResult =
   | { status: 'incomplete'; reason: string; metadata?: InvocationMetadata }
   | { status: 'unavailable'; reason: string; metadata?: InvocationMetadata };
 
+function object(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+export function parseInvocationRequest(value: unknown): StructuredInvocationRequest {
+  const root = object(value, 'Invocation request');
+  if (typeof root.instructions !== 'string' || !root.instructions.trim()) {
+    throw new Error('Invocation instructions are required');
+  }
+  if (root.instructions.length > 50_000) throw new Error('Invocation instructions are too long');
+
+  const output = object(root.output, 'Invocation output');
+  if (typeof output.name !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(output.name)) {
+    throw new Error('Invocation output name is invalid');
+  }
+  const schema = object(output.schema, 'Invocation output schema');
+
+  const maxOutputTokens = root.maxOutputTokens === undefined ? undefined : Number(root.maxOutputTokens);
+  if (maxOutputTokens !== undefined && (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 100_000)) {
+    throw new Error('maxOutputTokens must be an integer between 1 and 100000');
+  }
+
+  const timeoutMs = root.timeoutMs === undefined ? undefined : Number(root.timeoutMs);
+  if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 300_000)) {
+    throw new Error('timeoutMs must be an integer between 1000 and 300000');
+  }
+
+  return {
+    instructions: root.instructions.trim(),
+    input: root.input,
+    output: { name: output.name, schema },
+    maxOutputTokens,
+    timeoutMs,
+  };
+}
+
 type OpenAIResponse = {
   status?: string;
   model?: string;
