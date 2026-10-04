@@ -6,6 +6,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 
 import { createApiApp } from './src/api';
 import { GitHubGateway } from './src/github';
+import { InvocationBroker } from './src/invoke';
 import { createGitAppMcpHandler } from './src/mcp';
 import { PlatformStore } from './src/store';
 
@@ -35,7 +36,15 @@ async function start() {
     appUrl,
   });
 
-  const app = createApiApp({ store, github, appUrl, production });
+  const invoker = new InvocationBroker(store);
+  const app = createApiApp({
+    store,
+    github,
+    appUrl,
+    production,
+    invoker,
+    serviceToken: process.env.GITAPP_SERVICE_TOKEN ?? '',
+  });
 
   const mcp = createGitAppMcpHandler();
   const mcpNode = toNodeHandler(mcp);
