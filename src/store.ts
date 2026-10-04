@@ -94,6 +94,12 @@ export class PlatformStore {
         settings_json TEXT NOT NULL DEFAULT '{"backends":[],"bindings":{}}',
         secrets_json TEXT NOT NULL DEFAULT '{}'
       );
+      CREATE TABLE IF NOT EXISTS consumer_handoffs(
+        code_hash TEXT PRIMARY KEY,
+        consumer_id TEXT NOT NULL,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL
+      );
     `);
   }
 
@@ -136,6 +142,27 @@ export class PlatformStore {
 
   logout(token: string): void {
     if (token) this.db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hashToken(token));
+  }
+
+  createConsumerHandoff(userId: string, consumerId: string, ttlMs = 2 * 60_000): string {
+    if (!this.user(userId)) throw new Error('User not found');
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(consumerId)) throw new Error('Invalid consumer id');
+    const code = randomToken();
+    this.db.prepare('INSERT INTO consumer_handoffs(code_hash,consumer_id,user_id,expires_at) VALUES(?,?,?,?)')
+      .run(hashToken(code), consumerId, userId, Date.now() + ttlMs);
+    return code;
+  }
+
+  consumeConsumerHandoff(code: string, consumerId: string): User | undefined {
+    if (!code || !consumerId) return undefined;
+    const codeHash = hashToken(code);
+    const row = this.db.prepare(
+      'SELECT user_id AS userId,consumer_id AS consumerId,expires_at AS expiresAt FROM consumer_handoffs WHERE code_hash=?'
+    ).get(codeHash) as {userId:string;consumerId:string;expiresAt:number}|undefined;
+    if (!row) return undefined;
+    this.db.prepare('DELETE FROM consumer_handoffs WHERE code_hash=?').run(codeHash);
+    if (row.expiresAt <= Date.now() || row.consumerId !== consumerId) return undefined;
+    return this.user(row.userId);
   }
 
   startFlow(kind: string, binding: string, userId?: string, ttlMs = 10 * 60_000): string {
