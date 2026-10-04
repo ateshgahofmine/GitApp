@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
-import { createApiApp } from '../src/app';
+import { createApiApp } from '../src/api';
 import { PlatformStore } from '../src/store';
 
 describe('GitApp HTTP shell', () => {
