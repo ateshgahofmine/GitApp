@@ -4,7 +4,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 
-import { createApiApp } from './src/app';
+import { createApiApp } from './src/api';
 import { GitHubGateway } from './src/github';
 import { createGitAppMcpHandler } from './src/mcp';
 import { PlatformStore } from './src/store';
