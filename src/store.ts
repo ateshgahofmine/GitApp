@@ -112,6 +112,10 @@ export class PlatformStore {
     return this.db.prepare('SELECT id,github_id AS githubId,login,name,avatar FROM users WHERE id=?').get(id) as User | undefined;
   }
 
+  userByGithubId(githubId: string): User | undefined {
+    return this.db.prepare('SELECT id,github_id AS githubId,login,name,avatar FROM users WHERE github_id=?').get(githubId) as User | undefined;
+  }
+
   createSession(userId: string, ttlMs = 7 * 86400000): string {
     if (!this.user(userId)) throw new Error('User not found');
     const token = randomToken();

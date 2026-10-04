@@ -1,5 +1,7 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import express, { type Express, type Request, type Response } from 'express';
 import type { GitHubGateway } from './github';
+import { parseInvocationRequest, type InvocationBroker } from './invoke';
 import { randomToken, type PlatformStore, type User } from './store';
 import { toPublicSettings } from './settings';
 
@@ -57,7 +59,16 @@ type CreateApiOptions = {
   >;
   appUrl: string;
   production?: boolean;
+  invoker?: Pick<InvocationBroker, 'invoke'>;
+  serviceToken?: string;
 };
+
+function sameSecret(actual: string, expected: string): boolean {
+  if (!actual || !expected) return false;
+  const left = createHash('sha256').update(actual).digest();
+  const right = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(left, right);
+}
 
 export function createApiApp(options: CreateApiOptions): Express {
   const app = express();
@@ -190,6 +201,36 @@ export function createApiApp(options: CreateApiOptions): Express {
       installations: options.store.installations(user.id),
       settings: toPublicSettings(options.store.userSettings(user.id)),
     });
+  }));
+
+  app.post('/api/service/users/:githubUserId/invoke/:feature', route(async (request, response) => {
+    if (!options.invoker || !options.serviceToken) {
+      response.status(503).json({ error: 'GitApp service invocation is not configured' });
+      return;
+    }
+
+    const authorization = request.header('authorization') ?? '';
+    const prefix = 'Bearer ';
+    const token = authorization.startsWith(prefix) ? authorization.slice(prefix.length) : '';
+    if (!sameSecret(token, options.serviceToken)) {
+      response.status(401).json({ error: 'Invalid GitApp service token' });
+      return;
+    }
+
+    const githubUserId = request.params.githubUserId?.trim() ?? '';
+    const feature = request.params.feature?.trim() ?? '';
+    if (!/^[1-9][0-9]*$/.test(githubUserId)) {
+      response.status(400).json({ error: 'githubUserId must be a stable numeric GitHub user id' });
+      return;
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(feature)) {
+      response.status(400).json({ error: 'feature key is invalid' });
+      return;
+    }
+
+    const invocation = parseInvocationRequest(request.body);
+    const result = await options.invoker.invoke(githubUserId, feature, invocation);
+    response.set('Cache-Control', 'no-store').json(result);
   }));
 
   return app;
